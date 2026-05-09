@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Foundation X-Ray</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{
+  width:100%;height:100%;overflow:hidden;
+  background:linear-gradient(140deg,#ECF2FA 0%,#F6F9FE 60%,#E4EDF8 100%);
+}
+canvas{display:block}
+
+#menu{
+  position:fixed;top:14px;right:14px;
+  background:rgba(235,242,252,0.88);
+  backdrop-filter:blur(22px);
+  border:1px solid rgba(100,160,220,0.24);
+  border-radius:14px;
+  padding:14px 18px;
+  font:11px/1.85 'Courier New',monospace;
+  color:#1a2538;
+  min-width:240px;
+  z-index:10;
+  box-shadow:0 4px 32px rgba(40,90,180,0.08);
+}
+#menu .ttl{
+  font-size:11px;font-weight:bold;letter-spacing:.12em;
+  color:#2a3a5a;border-bottom:1px solid rgba(100,160,220,0.25);
+  padding-bottom:6px;margin-bottom:8px;
+}
+.row{display:flex;align-items:center;gap:9px}
+.sq{width:11px;height:11px;border-radius:2px;flex-shrink:0}
+.lbl{color:#2a3855}
+.sp{color:#8898b8;font-size:9.5px}
+.note{
+  margin-top:9px;padding-top:8px;
+  border-top:1px solid rgba(100,160,220,0.2);
+  font-size:9.5px;color:#8898b8;line-height:1.6;
+}
+#ctrl{
+  position:fixed;bottom:16px;left:50%;transform:translateX(-50%);
+  background:rgba(235,242,252,0.85);backdrop-filter:blur(14px);
+  color:#3a4a6a;padding:6px 20px;border-radius:30px;
+  font:10px 'Courier New',monospace;pointer-events:none;
+  border:1px solid rgba(100,160,220,0.20);
+}
+#btn{
+  position:fixed;bottom:16px;right:16px;
+  background:rgba(235,242,252,0.88);backdrop-filter:blur(10px);
+  color:#3a4a6a;padding:8px 16px;border-radius:20px;
+  font:10px 'Courier New',monospace;cursor:pointer;
+  border:1px solid rgba(100,160,220,0.26);
+}
+</style>
+</head>
+<body>
+
+<div id="menu">
+  <div class="ttl">LEGEND / ЛЕГЕНДА</div>
+
+  <div class="row"><div class="sq" style="background:#7a6248;opacity:.75"></div>
+    <span class="lbl">EARTH / ГРУНТ</span></div>
+
+  <div class="row"><div class="sq" style="background:#E8CC40"></div>
+    <span class="lbl">SAND / ПЕСОК <span class="sp">5 cm · 2"</span></span></div>
+
+  <div class="row"><div class="sq" style="background:#9AA0B0"></div>
+    <span class="lbl">GRAVEL / ЩЕБЕНЬ <span class="sp">15 cm · 6"</span></span></div>
+
+  <div class="row"><div class="sq" style="background:#B8D4EE"></div>
+    <span class="lbl">CMU 0 → 1 m <span class="sp">8×8×16"</span></span></div>
+
+  <div class="row"><div class="sq" style="background:#6AAACE"></div>
+    <span class="lbl">CMU 1 m → 2 m</span></div>
+
+  <div class="row"><div class="sq" style="background:#3C6E9A"></div>
+    <span class="lbl">CMU 2 m → TOP <span class="sp">step 18</span></span></div>
+
+  <div class="row"><div class="sq" style="background:#00DDEE"></div>
+    <span class="lbl">REBAR / АРМАТУРА <span class="sp">welded</span></span></div>
+
+  <div class="row"><div class="sq" style="background:#FFB020"></div>
+    <span class="lbl">WELD / СВАРКА</span></div>
+
+  <div class="row"><div class="sq" style="background:#7788AA;opacity:.8"></div>
+    <span class="lbl">STAIRCASE / ЛЕСТНИЦА</span></div>
+
+  <div class="row"><div class="sq" style="background:#88AACC;opacity:.7"></div>
+    <span class="lbl">WALLS / КЛУМБЫ</span></div>
+
+  <div class="row"><div class="sq" style="background:#00CCDD"></div>
+    <span class="lbl">STORM DRAIN / ЛИВНЕВКА</span></div>
+
+  <div class="note">
+    L-WALL 49.5"  ·  R-WALL 16.5"<br>
+    H: 54"  ·  from step 7  ·  depth 144"<br>
+    CMU 8×8×16"  ·  rebar @1m · 2m · top<br>
+    welded joints + dowels
+  </div>
+</div>
+
+<div id="ctrl">Drag — rotate &nbsp;|&nbsp; Scroll — zoom &nbsp;|&nbsp; RMB — pan</div>
+<button id="btn" onclick="toggleAuto()">⟳ Auto: ON</button>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ─── RENDERER ────────────────────────────────
+var renderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(innerWidth,innerHeight);
+renderer.setClearColor(0x000000,0);
+document.body.appendChild(renderer.domElement);
+
+var scene  = new THREE.Scene();
+var camera = new THREE.PerspectiveCamera(50,innerWidth/innerHeight,0.5,3000);
+window.addEventListener('resize',function(){
+  camera.aspect=innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+});
+
+// ─── LIGHTS ──────────────────────────────────
+scene.add(new THREE.AmbientLight(0xE8F2FF, 1.0));
+var dl1=new THREE.DirectionalLight(0xFFFFFF,0.42);
+dl1.position.set(-120,200,150); scene.add(dl1);
+var dl2=new THREE.DirectionalLight(0xCCE0FF,0.22);
+dl2.position.set(120,60,-120); scene.add(dl2);
+
+// ─── DIMENSIONS (inches) ─────────────────────
+var RISE=6, TREAD=12, W=84, STEPS=18;
+var STAIR_Z = STEPS*TREAD;   // 216
+var STAIR_H = STEPS*RISE;    // 108
+
+var WALL_Z0  = 6*TREAD;      // 72  (step 7)
+var WALL_ZE  = STAIR_Z;      // 216
+var WALL_LEN = 144;
+var WALL_CZ  = WALL_Z0 + WALL_LEN/2;  // 144
+var WALL_HT  = 54;
+
+var L_W = 49.5;  var R_W = 16.5;
+var L_CX = -(W/2+L_W/2);   // -66.75  (left wall centre X)
+var R_CX =  W/2+R_W/2;     // +50.25  (right wall centre X)
+
+// underground
+var EXT   = 30;   // extend layers 30" in front for cross-section visibility
+var SND_H = 2;    // sand  (~5 cm)
+var GRV_H = 6;    // gravel (~15 cm)
+var CMU_U = 8;    // CMU below grade (~20 cm)
+var EXC_D = SND_H+GRV_H+CMU_U;  // 16" total
+
+// rebar levels
+var RB1=40, RB2=80, RB3=STAIR_H;
+
+// ─── HELPERS ─────────────────────────────────
+function mFill(col,opa){
+  return new THREE.MeshPhongMaterial({
+    color:col, transparent:true, opacity:opa,
+    side:THREE.DoubleSide, depthWrite:false, shininess:6
+  });
+}
+function mWire(col,opa){
+  return new THREE.LineBasicMaterial({color:col,transparent:true,opacity:opa});
+}
+function gBox(x,y,z,w,h,d, fm, lc,lo, ro){
+  var geo=new THREE.BoxGeometry(w,h,d);
+  var fill=new THREE.Mesh(geo,fm);
+  fill.position.set(x,y,z); fill.renderOrder=ro||1; scene.add(fill);
+  var eg=new THREE.EdgesGeometry(geo);
+  var ln=new THREE.LineSegments(eg,mWire(lc,lo));
+  ln.position.set(x,y,z); ln.renderOrder=(ro||1)+2; scene.add(ln);
+}
+function addLines(pts,col,opa,ro){
+  var g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.BufferAttribute(new Float32Array(pts),3));
+  var ls=new THREE.LineSegments(g,mWire(col,opa));
+  ls.renderOrder=ro||4; scene.add(ls);
+}
+
+// ─── GROUND GRID ─────────────────────────────
+var grid=new THREE.GridHelper(500,80,0x9AB4D0,0x9AB4D0);
+grid.position.y=0.15; grid.material.transparent=true; grid.material.opacity=0.10;
+scene.add(grid);
+
+// ─── UNDERGROUND FOOTPRINTS ──────────────────
+// Sect A: staircase width (84"), Z = -EXT→WALL_Z0  (102")
+// Sect B: full width (150"),     Z = WALL_Z0→WALL_ZE (144")
+var SA_D=WALL_Z0+EXT, SA_CZ=(-EXT+WALL_Z0)/2;   // 102, 21
+var SB_W=L_W+W+R_W, SB_CX=(-(W/2+L_W)+(W/2+R_W))/2;  // 150, -16.5
+var SB_D=WALL_LEN, SB_CZ=WALL_CZ;               // 144, 144
+
+// Y centers
+var SND_CY = -(EXC_D-SND_H/2);                        // -15
+var GRV_CY = -(EXC_D-SND_H-GRV_H/2);                  // -11
+var CMU_CY = -(CMU_U/2);                               // -4
+
+// SAND
+var sndM = mFill(0xE8CC40,0.50);
+gBox(0, SND_CY, SA_CZ,  W, SND_H, SA_D,  sndM, 0xB89A20, 0.60);
+gBox(SB_CX, SND_CY, SB_CZ,  SB_W, SND_H, SB_D,  sndM, 0xB89A20, 0.60);
+
+// GRAVEL
+var grvM = mFill(0x9AA0B0,0.42);
+gBox(0, GRV_CY, SA_CZ,  W, GRV_H, SA_D,  grvM, 0x6878A0, 0.58);
+gBox(SB_CX, GRV_CY, SB_CZ,  SB_W, GRV_H, SB_D,  grvM, 0x6878A0, 0.58);
+
+// CMU UNDERGROUND
+var cbuM = mFill(0xB0C8E4,0.38);
+gBox(0, CMU_CY, SA_CZ,  W, CMU_U, SA_D,  cbuM, 0x4477AA, 0.55);
+gBox(SB_CX, CMU_CY, SB_CZ,  SB_W, CMU_U, SB_D,  cbuM, 0x4477AA, 0.55);
+
+// ─── CMU ZONES ABOVE GROUND ──────────────────
+// ZONE 1  (Y=0→40, 0→1m)
+var z1M = mFill(0xB8D4EE,0.28);
+gBox(0, RB1/2, STAIR_Z/2,  W, RB1, STAIR_Z,  z1M, 0x4488BB, 0.40, 2);
+gBox(L_CX, RB1/2, WALL_CZ,  L_W, RB1, WALL_LEN,  z1M, 0x4488BB, 0.42, 2);
+gBox(R_CX, RB1/2, WALL_CZ,  R_W, RB1, WALL_LEN,  z1M, 0x4488BB, 0.42, 2);
+
+// ZONE 2  (Y=40→80, 1m→2m) — staircase only
+var z2M = mFill(0x6AAACE,0.26);
+gBox(0, RB1+(RB2-RB1)/2, STAIR_Z/2,  W, RB2-RB1, STAIR_Z,  z2M, 0x3366AA, 0.38, 2);
+// Walls only reach 54" → show their zone-2 portion (Y=40→54)
+var wUpM = mFill(0x6AAACE,0.22);
+gBox(L_CX, RB1+(WALL_HT-RB1)/2, WALL_CZ,  L_W, WALL_HT-RB1, WALL_LEN,  wUpM, 0x3366AA, 0.34, 2);
+gBox(R_CX, RB1+(WALL_HT-RB1)/2, WALL_CZ,  R_W, WALL_HT-RB1, WALL_LEN,  wUpM, 0x3366AA, 0.34, 2);
+
+// ZONE 3  (Y=80→108, 2m→top) — staircase only
+var z3M = mFill(0x3C6E9A,0.24);
+gBox(0, RB2+(STAIR_H-RB2)/2, STAIR_Z/2,  W, STAIR_H-RB2, STAIR_Z,  z3M, 0x224466, 0.38, 2);
+
+// Subtle CMU block grid on front face of Zone 1 (Z=0 plane)
+(function(){
+  var pts=[];
+  for(var y=0;y<=RB1;y+=8) pts.push(-W/2,y,0.8, W/2,y,0.8);
+  for(var x=-W/2;x<=W/2;x+=16) pts.push(x,0,0.8, x,RB1,0.8);
+  addLines(pts, 0x4488BB, 0.16, 3);
+})();
+
+// ─── STAIRCASE WIREFRAME OUTLINE ─────────────
+(function(){
+  var pts=[];
+  for(var i=0;i<STEPS;i++){
+    var topY=(i+1)*RISE, pY=i*RISE, fZ=i*TREAD, bZ=fZ+TREAD;
+    pts.push(-W/2,pY,fZ,  -W/2,topY,fZ);   // riser L
+    pts.push(-W/2,topY,fZ, -W/2,topY,bZ);  // tread L
+    pts.push( W/2,pY,fZ,   W/2,topY,fZ);   // riser R
+    pts.push( W/2,topY,fZ,  W/2,topY,bZ);  // tread R
+    pts.push(-W/2,topY,fZ,  W/2,topY,fZ);  // top edge
+  }
+  pts.push(-W/2,0,0, W/2,0,0);
+  pts.push(-W/2,0,0, -W/2,0,STAIR_Z);
+  pts.push( W/2,0,0,  W/2,0,STAIR_Z);
+  pts.push(-W/2,STAIR_H,STAIR_Z, W/2,STAIR_H,STAIR_Z);
+  pts.push(-W/2,0,STAIR_Z, -W/2,STAIR_H,STAIR_Z);
+  pts.push( W/2,0,STAIR_Z,  W/2,STAIR_H,STAIR_Z);
+  addLines(pts, 0x7788AA, 0.72, 5);
+})();
+
+// ─── REBAR HORIZONTAL LEVELS ─────────────────
+function rebarGrid(y, xMn, xMx, zMn, zMx, opa){
+  var pts=[];
+  pts.push(xMn,y,zMn, xMx,y,zMn, xMx,y,zMn, xMx,y,zMx,
+           xMx,y,zMx, xMn,y,zMx, xMn,y,zMx, xMn,y,zMn);
+  for(var z=zMn;z<=zMx;z+=24) pts.push(xMn,y,z, xMx,y,z);
+  for(var x=xMn;x<=xMx;x+=16) pts.push(x,y,zMn, x,y,zMx);
+  addLines(pts, 0x00DDEE, opa, 5);
+}
+
+// Level 1 (Y=40): staircase + walls
+rebarGrid(RB1, -W/2, W/2, 0, STAIR_Z, 0.78);
+rebarGrid(RB1, -(W/2+L_W), -W/2, WALL_Z0, WALL_ZE, 0.68);
+rebarGrid(RB1,  W/2, W/2+R_W, WALL_Z0, WALL_ZE, 0.68);
+
+// Level 2 (Y=80): staircase only
+rebarGrid(RB2, -W/2, W/2, 0, STAIR_Z, 0.74);
+
+// Level 3 (Y=108): staircase top
+rebarGrid(RB3, -W/2, W/2, 0, STAIR_Z, 0.70);
+
+// ─── VERTICAL REBAR ──────────────────────────
+(function(){
+  var pts=[];
+  // Staircase verticals
+  [-32,-16,0,16,32].forEach(function(x){
+    [24,72,108,156,192].forEach(function(z){
+      pts.push(x,-8,z, x,STAIR_H,z);
+    });
+  });
+  // Left wall verticals
+  [L_CX-16, L_CX, L_CX+16].forEach(function(x){
+    [90,120,150,180].forEach(function(z){
+      pts.push(x,-8,z, x,WALL_HT,z);
+    });
+  });
+  // Right wall verticals
+  [R_CX].forEach(function(x){
+    [90,126,162,198].forEach(function(z){
+      pts.push(x,-8,z, x,WALL_HT,z);
+    });
+  });
+  addLines(pts, 0x00DDEE, 0.35, 4);
+})();
+
+// ─── WELD INDICATORS ─────────────────────────
+(function(){
+  var wM = new THREE.MeshPhongMaterial({color:0xFFB020,emissive:0xCC7000,emissiveIntensity:0.3,shininess:80});
+  var pts=[
+    [0,RB1,108],[32,RB1,72],[-32,RB1,144],
+    [0,RB2,60],[0,RB2,156],
+    [L_CX,RB1,120],[R_CX,RB1,150]
+  ];
+  pts.forEach(function(p){
+    var s=new THREE.Mesh(new THREE.SphereGeometry(3,8,6),wM);
+    s.position.set(p[0],p[1],p[2]); s.renderOrder=6; scene.add(s);
+  });
+})();
+
+// ─── STORM DRAIN / ЛИВНЕВКА (left wall) ──────
+(function(){
+  // Channel runs from staircase inner face (X=-42) through left wall (X=-91.5)
+  // and exits 28" beyond to the left (X=-119.5)
+  var xIn   = -W/2;          // -42
+  var xOut  = -(W/2+L_W);    // -91.5
+  var xExit = xOut-28;       // -119.5
+  var drainLen = xIn-xExit;  // 77.5"
+  var drainCX  = (xIn+xExit)/2; // -80.75
+
+  var dM = mFill(0x00CCDD, 0.88);
+  gBox(drainCX, 4, WALL_CZ, drainLen, 5, 8, dM, 0x00FFEE, 1.0, 6);
+
+  // Exit cap (outlet indicator)
+  var capM = mFill(0x00AABB, 0.92);
+  gBox(xExit-5, 4, WALL_CZ, 10, 9, 14, capM, 0x00FFEE, 1.0, 6);
+
+  // Drain arrow lines
+  var pts=[xExit-14,4,WALL_CZ, xExit-5,4,WALL_CZ,
+           xExit-10,8,WALL_CZ, xExit-5,4,WALL_CZ,
+           xExit-10,0,WALL_CZ, xExit-5,4,WALL_CZ];
+  addLines(pts, 0x00FFEE, 1.0, 7);
+})();
+
+// ─── EARTH CONTEXT (large faint surrounding soil) ─
+(function(){
+  var eM = mFill(0x7A6248, 0.08);
+  // Ground plane below excavation
+  gBox(0, -(EXC_D+10), 100, 400, 20, 400, eM, 0x7A6248, 0.12, 0);
+})();
+
+// ─── CAMERA ──────────────────────────────────
+var theta=Math.PI+0.55, phi=0.98, radius=390;
+var target=new THREE.Vector3(0, 32, 130);
+var autoRot=true;
+
+function sync(){
+  camera.position.set(
+    target.x+radius*Math.sin(phi)*Math.sin(theta),
+    target.y+radius*Math.cos(phi),
+    target.z+radius*Math.sin(phi)*Math.cos(theta));
+  camera.lookAt(target);
+}
+sync();
+
+var drag=false,rDrag=false,px=0,py=0;
+renderer.domElement.addEventListener('mousedown',function(e){
+  drag=true;rDrag=e.button===2;px=e.clientX;py=e.clientY;e.preventDefault();
+});
+renderer.domElement.addEventListener('contextmenu',function(e){e.preventDefault();});
+window.addEventListener('mouseup',function(){drag=false;});
+window.addEventListener('mousemove',function(e){
+  if(!drag)return;
+  var dx=e.clientX-px,dy=e.clientY-py;px=e.clientX;py=e.clientY;
+  if(rDrag){
+    var rv=new THREE.Vector3().crossVectors(new THREE.Vector3(0,1,0),
+      new THREE.Vector3().subVectors(camera.position,target).normalize()).normalize();
+    target.addScaledVector(rv,-dx*0.25);target.y+=dy*0.25;
+  }else{
+    theta-=dx*0.010;
+    phi=Math.max(0.08,Math.min(Math.PI*0.9,phi-dy*0.010));
+  }
+  sync();
+});
+renderer.domElement.addEventListener('wheel',function(e){
+  radius=Math.max(50,Math.min(1100,radius*(1+e.deltaY*0.001)));sync();
+},{passive:true});
+
+var prevP=0;
+renderer.domElement.addEventListener('touchstart',function(e){
+  e.preventDefault();
+  if(e.touches.length===1){drag=true;rDrag=false;px=e.touches[0].clientX;py=e.touches[0].clientY;}
+  if(e.touches.length===2){drag=false;prevP=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);}
+},{passive:false});
+renderer.domElement.addEventListener('touchmove',function(e){
+  e.preventDefault();
+  if(e.touches.length===1&&drag){
+    var dx=e.touches[0].clientX-px,dy=e.touches[0].clientY-py;
+    px=e.touches[0].clientX;py=e.touches[0].clientY;
+    theta-=dx*0.010;phi=Math.max(0.08,Math.min(Math.PI*0.9,phi-dy*0.010));sync();
+  }
+  if(e.touches.length===2){
+    var p=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+    radius=Math.max(50,Math.min(1100,radius*(prevP/p)));prevP=p;sync();
+  }
+},{passive:false});
+renderer.domElement.addEventListener('touchend',function(){drag=false;});
+
+function toggleAuto(){
+  autoRot=!autoRot;
+  document.getElementById('btn').textContent='⟳ Auto: '+(autoRot?'ON':'OFF');
+}
+function animate(){
+  requestAnimationFrame(animate);
+  if(autoRot&&!drag){theta+=0.0025;sync();}
+  renderer.render(scene,camera);
+}
+animate();
+</script>
+</body>
+</html>
